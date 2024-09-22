@@ -1,5 +1,5 @@
 yfinance
-investpy
+fredapi
 pandas
 plotly
 streamlit
