@@ -5,7 +5,7 @@ import streamlit as st
 from fredapi import Fred
 
 # Set up FRED API
-fred = Fred(api_key='YOUR_API_KEY')
+fred = Fred(api_key='204e074d636f343ecb4aa8ab55e47200')
 
 # Fetch Argentine stocks and CEDEARs data
 arg_stocks = ['GGAL.BA', 'YPFD.BA', 'PAMP.BA']  # Add more stocks as needed
