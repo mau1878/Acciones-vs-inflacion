@@ -70,7 +70,7 @@ if tickers and not invalid_tickers:
             merged_data = pd.merge(stock_data[['Adj Close']], inflation_filtered, how='inner', left_index=True, right_on='Date')
 
             # Calculate inflation-adjusted returns (stock returns minus cumulative inflation)
-            inflation_adjusted_returns = cumulative_returns.loc[merged_data['Date'].values] / merged_data['Cumulative_Inflation'].values
+            inflation_adjusted_returns = cumulative_returns.loc[merged_data['Date'].values] - merged_data['Cumulative_Inflation'].values
 
             # Add adjusted stock returns to the plot
             fig.add_trace(go.Scatter(x=merged_data['Date'], y=inflation_adjusted_returns,
