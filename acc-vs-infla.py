@@ -1,16 +1,8 @@
-import requests
-import json
+import yfinance as yf
 from datetime import datetime
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-
-def get_yahoo_finance_data(symbol, start_date, end_date):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?period1={int(start_date.timestamp())}&period2={int(end_date.timestamp())}&interval=1d"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    response = requests.get(url, headers=headers)
-    data = json.loads(response.text)
-    return data
 
 # Inflación mensual estimada (datos corregidos)
 inflation_rates = {
@@ -32,15 +24,14 @@ for year in range(2017, 2025):
     start_date = datetime(year, 1, 1)
     end_date = datetime(year, 12, 31)
 
-    stock_data = get_yahoo_finance_data(ticker, start_date, end_date)
+    # Fetching data using yfinance
+    stock_data = yf.download(ticker, start=start_date, end=end_date)
 
-    if stock_data and 'chart' in stock_data and 'result' in stock_data['chart'] and stock_data['chart']['result']:
-        result = stock_data['chart']['result'][0]
+    if not stock_data.empty:
+        # Reset index to access date as a column
+        stock_data.reset_index(inplace=True)
 
-        df = pd.DataFrame({
-            'Date': pd.to_datetime(result['timestamp'], unit='s'),
-            'Close': result['indicators']['quote'][0]['close']
-        })
+        df = stock_data[['Date', 'Close']]
 
         # Calcular la inflación acumulada correctamente
         monthly_inflation = inflation_rates[year]
