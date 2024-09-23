@@ -11,57 +11,78 @@ inflation_data['CPI_MoM'] = inflation_data['CPI_MoM'].astype(float)
 # Start with a cumulative factor of 1 for inflation, and calculate the daily inflation compounded
 inflation_data['Cumulative_Inflation'] = (1 + inflation_data['CPI_MoM']).cumprod()
 
-# Set up stock tickers (you can add more stocks here)
-arg_stocks = ['GGAL.BA', 'YPFD.BA', 'PAMP.BA']
-arg_stocks_data = {}
-
-# Fetch stock data
-for stock in arg_stocks:
-    # Fetch stock data from Yahoo Finance
-    stock_data = yf.download(stock, start='2010-01-01', end=pd.to_datetime('today'))
-    # Forward-fill missing values
-    stock_data.fillna(method='ffill', inplace=True)
-    # Store the stock data
-    arg_stocks_data[stock] = stock_data
-
 # Create Streamlit app
-st.title('Argentine Stocks and CEDEARs vs. Cumulative Inflation-Adjusted Returns')
+st.title('Argentine Stocks vs. Inflation-Adjusted Returns')
 
-# Stock selector in Streamlit
-selected_stocks = st.multiselect('Select stocks to compare:', arg_stocks)
+# Explain the .BA suffix requirement
+st.write("Please note: Argentine stock tickers must have the suffix '.BA'. For example, 'YPFD.BA'.")
 
-# Create figure
-fig = go.Figure()
+# Add a date picker for start and end dates
+start_date = st.date_input("Select start date:", pd.to_datetime('2010-01-01'))
+end_date = st.date_input("Select end date:", pd.to_datetime('today'))
 
-# Add cumulative inflation data
-fig.add_trace(go.Scatter(x=inflation_data['Date'], y=inflation_data['Cumulative_Inflation'],
-                         mode='lines', name='Cumulative Inflation',
-                         line=dict(color='orange', width=2)))
+# Allow the user to enter custom stock tickers
+tickers_input = st.text_input("Enter stock tickers separated by commas (e.g., GGAL.BA, YPFD.BA, PAMP.BA):")
+tickers = [ticker.strip().upper() for ticker in tickers_input.split(',') if ticker.strip()]
 
-# Update figure with selected stocks
-if selected_stocks:
-    for stock in selected_stocks:
-        # Calculate cumulative returns for each stock
-        stock_data = arg_stocks_data[stock]
-        cumulative_returns = (1 + stock_data['Adj Close'].pct_change().fillna(0)).cumprod()
+# Validate that tickers include the ".BA" suffix
+invalid_tickers = [ticker for ticker in tickers if not ticker.endswith('.BA')]
 
-        # Merge stock data with inflation data on date
-        merged_data = pd.merge(stock_data[['Adj Close']], inflation_data, how='inner', left_index=True, right_on='Date')
+# If there are invalid tickers, show a warning message
+if invalid_tickers:
+    st.error(f"The following tickers are invalid (they must end with '.BA'): {', '.join(invalid_tickers)}")
 
-        # Calculate inflation-adjusted returns (stock returns minus cumulative inflation)
-        inflation_adjusted_returns = cumulative_returns.loc[merged_data['Date'].values] / merged_data['Cumulative_Inflation'].values
+# If tickers are valid, proceed with the calculations
+if tickers and not invalid_tickers:
+    arg_stocks_data = {}
 
-        # Add adjusted stock returns to the plot
-        fig.add_trace(go.Scatter(x=merged_data['Date'], y=inflation_adjusted_returns,
-                                 mode='lines', name=f'{stock} (Adjusted)',
-                                 line=dict(width=2)))
+    # Fetch stock data for each ticker
+    for stock in tickers:
+        try:
+            # Fetch stock data from Yahoo Finance
+            stock_data = yf.download(stock, start=start_date, end=end_date)
+            # Forward-fill missing values
+            stock_data.fillna(method='ffill', inplace=True)
+            # Store the stock data
+            arg_stocks_data[stock] = stock_data
+        except Exception as e:
+            st.error(f"Failed to fetch data for {stock}: {e}")
 
-# Customize layout
-fig.update_layout(title='Argentine Stocks vs. Inflation-Adjusted Returns',
-                  xaxis_title='Date',
-                  yaxis_title='Cumulative Returns (Inflation Adjusted)',
-                  yaxis_type="log",  # Log scale to better visualize inflation vs. stocks
-                  template='plotly_dark')
+    # Create figure
+    fig = go.Figure()
 
-# Display figure in Streamlit
-st.plotly_chart(fig, use_container_width=True)
+    # Add cumulative inflation data within the selected date range
+    inflation_filtered = inflation_data[(inflation_data['Date'] >= pd.to_datetime(start_date)) &
+                                        (inflation_data['Date'] <= pd.to_datetime(end_date))]
+    fig.add_trace(go.Scatter(x=inflation_filtered['Date'], y=inflation_filtered['Cumulative_Inflation'],
+                             mode='lines', name='Cumulative Inflation',
+                             line=dict(color='orange', width=2)))
+
+    # Update figure with selected stocks
+    for stock in tickers:
+        if stock in arg_stocks_data:
+            stock_data = arg_stocks_data[stock]
+
+            # Calculate cumulative returns for each stock
+            cumulative_returns = (1 + stock_data['Adj Close'].pct_change().fillna(0)).cumprod()
+
+            # Merge stock data with inflation data on date
+            merged_data = pd.merge(stock_data[['Adj Close']], inflation_filtered, how='inner', left_index=True, right_on='Date')
+
+            # Calculate inflation-adjusted returns (stock returns minus cumulative inflation)
+            inflation_adjusted_returns = cumulative_returns.loc[merged_data['Date'].values] / merged_data['Cumulative_Inflation'].values
+
+            # Add adjusted stock returns to the plot
+            fig.add_trace(go.Scatter(x=merged_data['Date'], y=inflation_adjusted_returns,
+                                     mode='lines', name=f'{stock} (Adjusted)',
+                                     line=dict(width=2)))
+
+    # Customize layout
+    fig.update_layout(title='Argentine Stocks vs. Inflation-Adjusted Returns',
+                      xaxis_title='Date',
+                      yaxis_title='Cumulative Returns (Inflation Adjusted)',
+                      yaxis_type="log",  # Log scale to better visualize inflation vs. stocks
+                      template='plotly_dark')
+
+    # Display figure in Streamlit
+    st.plotly_chart(fig, use_container_width=True)
