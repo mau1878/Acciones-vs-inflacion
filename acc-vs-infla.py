@@ -63,7 +63,7 @@ if tickers and not invalid_tickers:
             stock_data = arg_stocks_data[stock]
 
             # Calculate cumulative returns as a percentage
-            cumulative_returns = (1 + stock_data['Adj Close'].pct_change().fillna(0)).cumprod() - 1  # Convert to percentage
+            cumulative_returns = (1 + stock_data['Adj Close'].pct_change().fillna(0)).cumprod()  # Convert to percentage
 
             # Merge stock data with inflation data on date
             merged_data = pd.merge(stock_data[['Adj Close']], inflation_filtered, how='inner', left_index=True, right_on='Date')
