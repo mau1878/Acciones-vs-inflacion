@@ -1,5 +1,4 @@
 yfinance
-json
 pandas
 plotly
 streamlit
