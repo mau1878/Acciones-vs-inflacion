@@ -8,8 +8,7 @@ inflation_data = pd.read_csv('inflaciónargentina2.csv', parse_dates=['Date'], d
 
 # Convert monthly inflation rates into daily cumulative inflation
 inflation_data['CPI_MoM'] = inflation_data['CPI_MoM'].astype(float)
-# Start with a cumulative factor of 1 for inflation, and calculate the daily inflation compounded
-inflation_data['Cumulative_Inflation'] = (1 + inflation_data['CPI_MoM']).cumprod()
+inflation_data['Cumulative_Inflation'] = (1 + inflation_data['CPI_MoM']).cumprod() - 1  # Convert to percentage
 
 # Create Streamlit app
 st.title('Argentine Stocks vs. Inflation-Adjusted Returns')
@@ -54,8 +53,8 @@ if tickers and not invalid_tickers:
     # Add cumulative inflation data within the selected date range
     inflation_filtered = inflation_data[(inflation_data['Date'] >= pd.to_datetime(start_date)) &
                                         (inflation_data['Date'] <= pd.to_datetime(end_date))]
-    fig.add_trace(go.Scatter(x=inflation_filtered['Date'], y=inflation_filtered['Cumulative_Inflation'],
-                             mode='lines', name='Cumulative Inflation',
+    fig.add_trace(go.Scatter(x=inflation_filtered['Date'], y=inflation_filtered['Cumulative_Inflation'] * 100,
+                             mode='lines', name='Cumulative Inflation (%)',
                              line=dict(color='orange', width=2)))
 
     # Update figure with selected stocks
@@ -63,14 +62,14 @@ if tickers and not invalid_tickers:
         if stock in arg_stocks_data:
             stock_data = arg_stocks_data[stock]
 
-            # Calculate cumulative returns for each stock
-            cumulative_returns = (1 + stock_data['Adj Close'].pct_change().fillna(0)).cumprod()
+            # Calculate cumulative returns as a percentage
+            cumulative_returns = (1 + stock_data['Adj Close'].pct_change().fillna(0)).cumprod() - 1  # Convert to percentage
 
             # Merge stock data with inflation data on date
             merged_data = pd.merge(stock_data[['Adj Close']], inflation_filtered, how='inner', left_index=True, right_on='Date')
 
-            # Calculate inflation-adjusted returns (stock returns minus cumulative inflation)
-            inflation_adjusted_returns = cumulative_returns.loc[merged_data['Date'].values] - merged_data['Cumulative_Inflation'].values
+            # Calculate inflation-adjusted returns (cumulative returns minus cumulative inflation)
+            inflation_adjusted_returns = cumulative_returns.loc[merged_data['Date'].values] * 100 - merged_data['Cumulative_Inflation'].values * 100
 
             # Add adjusted stock returns to the plot
             fig.add_trace(go.Scatter(x=merged_data['Date'], y=inflation_adjusted_returns,
@@ -80,8 +79,7 @@ if tickers and not invalid_tickers:
     # Customize layout
     fig.update_layout(title='Argentine Stocks vs. Inflation-Adjusted Returns',
                       xaxis_title='Date',
-                      yaxis_title='Cumulative Returns (Inflation Adjusted)',
-                      yaxis_type="log",  # Log scale to better visualize inflation vs. stocks
+                      yaxis_title='Cumulative Returns - Cumulative Inflation (%)',
                       template='plotly_dark')
 
     # Display figure in Streamlit
