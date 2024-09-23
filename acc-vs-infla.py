@@ -20,44 +20,50 @@ inflation_rates = {
 st.title("Análisis de Ticker y Comparación con Inflación")
 ticker = st.text_input("Ingrese el ticker (por defecto GGAL.BA):", "GGAL.BA")
 
-# New feature: Option to choose date range
-date_range_mode = st.checkbox("Comparar en un solo gráfico por rango de fechas", value=False)
-
-if date_range_mode:
-    # Select a date range from 2017 onwards
-    start_date = st.date_input("Fecha de inicio", value=datetime(2017, 1, 1), min_value=datetime(2017, 1, 1))
-    end_date = st.date_input("Fecha de fin", value=datetime(2024, 12, 31), min_value=datetime(2017, 1, 1))
+for year in range(2017, 2025):
+    start_date = datetime(year, 1, 1)
+    end_date = datetime(year, 12, 31)
 
     # Fetching data using yfinance
     stock_data = yf.download(ticker, start=start_date, end=end_date)
 
     if not stock_data.empty:
+        # Reset index to access date as a column
         stock_data.reset_index(inplace=True)
+
         df = stock_data[['Date', 'Close']]
 
-        # Calcular inflación acumulada para el rango de fechas
-        cumulative_inflation = [1]
-        for year in range(start_date.year, end_date.year + 1):
-            if year in inflation_rates:
-                monthly_inflation = inflation_rates[year]
-                for month, rate in enumerate(monthly_inflation):
-                    days_in_month = (df['Date'].dt.month == month + 1).sum()
-                    if days_in_month > 0:
-                        daily_rate = (1 + rate / 100) ** (1 / days_in_month) - 1
-                        cumulative_inflation += [cumulative_inflation[-1] * (1 + daily_rate)] * days_in_month
+        # Calcular la inflación acumulada correctamente
+        monthly_inflation = inflation_rates[year]
+        daily_inflation = []
+        for month, rate in enumerate(monthly_inflation):
+            days_in_month = (df['Date'].dt.month == month + 1).sum()
+            daily_rate = (1 + rate / 100) ** (1 / days_in_month) - 1
+            daily_inflation.extend([daily_rate] * days_in_month)
 
-        cumulative_inflation = cumulative_inflation[:len(df)]
+        # Ajustar la longitud de daily_inflation si es necesario
+        daily_inflation = daily_inflation[:len(df)]
+
+        # Calcular la inflación acumulada
+        cumulative_inflation = [1]
+        for rate in daily_inflation:
+            cumulative_inflation.append(cumulative_inflation[-1] * (1 + rate))
+        cumulative_inflation = cumulative_inflation[1:]  # Remover el 1 inicial
 
         # Calcular la línea de inflación
         inflation_line = df['Close'].iloc[0] * pd.Series(cumulative_inflation)
 
-        # Crear la gráfica para el rango de fechas
+        # Calcular rendimientos
+        stock_return = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100
+        inflation_return = ((cumulative_inflation[-1] - 1) * 100)
+
+        # Create figure
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name=ticker))
         fig.add_trace(go.Scatter(x=df['Date'], y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
 
         fig.update_layout(
-            title=f"{ticker} vs Inflación ({start_date.year} - {end_date.year})",
+            title=f"{ticker} vs Inflación ({year})",
             xaxis_title='Fecha',
             yaxis_title='Precio (ARS)',
             height=600,
@@ -78,69 +84,10 @@ if date_range_mode:
         )
 
         st.plotly_chart(fig)
-else:
-    # Default behavior: one graph per year
-    for year in range(2017, 2025):
-        start_date = datetime(year, 1, 1)
-        end_date = datetime(year, 12, 31)
 
-        # Fetching data using yfinance
-        stock_data = yf.download(ticker, start=start_date, end=end_date)
-
-        if not stock_data.empty:
-            stock_data.reset_index(inplace=True)
-            df = stock_data[['Date', 'Close']]
-
-            # Calcular la inflación acumulada correctamente
-            monthly_inflation = inflation_rates[year]
-            daily_inflation = []
-            for month, rate in enumerate(monthly_inflation):
-                days_in_month = (df['Date'].dt.month == month + 1).sum()
-                daily_rate = (1 + rate / 100) ** (1 / days_in_month) - 1
-                daily_inflation.extend([daily_rate] * days_in_month)
-
-            daily_inflation = daily_inflation[:len(df)]
-
-            # Calcular la inflación acumulada
-            cumulative_inflation = [1]
-            for rate in daily_inflation:
-                cumulative_inflation.append(cumulative_inflation[-1] * (1 + rate))
-            cumulative_inflation = cumulative_inflation[1:]
-
-            # Calcular la línea de inflación
-            inflation_line = df['Close'].iloc[0] * pd.Series(cumulative_inflation)
-
-            # Create figure
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name=ticker))
-            fig.add_trace(go.Scatter(x=df['Date'], y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
-
-            fig.update_layout(
-                title=f"{ticker} vs Inflación ({year})",
-                xaxis_title='Fecha',
-                yaxis_title='Precio (ARS)',
-                height=600,
-                width=900,
-                dragmode='pan',
-                hovermode='x unified',
-                xaxis=dict(
-                    rangeslider=dict(visible=False),
-                    showline=True,
-                    showgrid=True
-                ),
-                yaxis=dict(
-                    showline=True,
-                    showgrid=True
-                ),
-                margin=dict(l=50, r=50, b=100, t=100),
-                paper_bgcolor="Black",
-            )
-
-            st.plotly_chart(fig)
-
-            st.write(f"Año {year}:")
-            st.write(f"Rendimiento de {ticker}: {stock_return:.2f}%")
-            st.write(f"Inflación en Argentina: {inflation_return:.2f}%")
-            st.write(f"Diferencia: {stock_return - inflation_return:.2f}%")
-        else:
-            st.write(f"No se encontraron datos para {ticker} en el año {year}.")
+        st.write(f"Año {year}:")
+        st.write(f"Rendimiento de {ticker}: {stock_return:.2f}%")
+        st.write(f"Inflación en Argentina: {inflation_return:.2f}%")
+        st.write(f"Diferencia: {stock_return - inflation_return:.2f}%")
+    else:
+        st.write(f"No se encontraron datos para {ticker} en el año {year}.")
