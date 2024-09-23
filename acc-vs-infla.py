@@ -6,6 +6,9 @@ import streamlit as st
 # Load inflation data from CSV
 inflation_data = pd.read_csv('inflaciónargentina2.csv', parse_dates=['Date'], dayfirst=True)
 
+# Ensure 'Date' column is in datetime format
+inflation_data['Date'] = pd.to_datetime(inflation_data['Date'])
+
 # Calculate cumulative inflation from monthly inflation rates
 inflation_data['CPI_MoM'] = inflation_data['CPI_MoM'].astype(float)
 inflation_data['Cumulative_Inflation'] = (1 + inflation_data['CPI_MoM']).cumprod() - 1
