@@ -80,7 +80,7 @@ for year in range(2017, 2025):
                 showgrid=True
             ),
             margin=dict(l=50, r=50, b=100, t=100),
-            paper_bgcolor="LightSteelBlue",
+            paper_bgcolor="Black",
         )
 
         st.plotly_chart(fig)
