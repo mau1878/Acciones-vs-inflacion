@@ -48,7 +48,7 @@ splits = {
     'VZ.BA': 2,
     'VIST.BA': 3,
     'WMT.BA': 3,
-    'AGRO.BA': (6, 2.1)  # Adjustments for AGRO.BA
+    'AGRO.BA': (6, 2.1)  # Ajustes para AGRO.BA
 }
 
 # Función para ajustar precios por splits
@@ -133,7 +133,9 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
 
 # Streamlit UI
 st.title("Análisis de Ticker y Comparación con Inflación")
-ticker = st.text_input("Ingrese el ticker (por defecto GGAL.BA):", "GGAL.BA")
+
+# Ensure ticker input is in uppercase
+ticker = st.text_input("Ingrese el ticker (por defecto GGAL.BA):", "GGAL.BA").upper()
 
 # Option to choose between per-year analysis or date range analysis
 analysis_type = st.radio(
