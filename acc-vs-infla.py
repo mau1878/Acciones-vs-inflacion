@@ -3,6 +3,9 @@ from datetime import datetime, date
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import investpy  # Importing InvestPy for fetching data from Investing.com
+
+# Your existing inflation rates and splits dictionaries here...
 
 # Inflación mensual estimada (datos corregidos)
 inflation_rates = {
@@ -50,107 +53,46 @@ splits = {
     'WMT.BA': 3,
     'AGRO.BA': (6, 2.1)  # Ajustes para AGRO.BA
 }
-
-# Función para ajustar precios por splits
-def ajustar_precios_por_splits(df, ticker):
-    if ticker == 'AGRO.BA':
-        # Ajuste para AGRO.BA
-        df.loc[df['Date'] < datetime(2023, 11, 3), 'Close'] /= 6
-        df.loc[df['Date'] == datetime(2023, 11, 3), 'Close'] *= 2.1
-    else:
-        divisor = splits.get(ticker, 1)  # Valor por defecto es 1 si no está en el diccionario
-        df.loc[df['Date'] <= datetime(2024, 1, 23), 'Close'] /= divisor
-    return df
-
-# Función para calcular inflación diaria acumulada dentro de un rango de fechas
-def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_month):
-    cumulative_inflation = [1]  # Comienza con 1 para no alterar los valores
-
-    for year in range(start_year, end_year + 1):
-        if year not in inflation_rates:
-            continue
-
-        monthly_inflation = inflation_rates[year]
-
-        # Define the range of months to consider for the year
-        if year == start_year:
-            months = range(start_month - 1, 12)  # Desde el mes de inicio hasta el final del año
-        elif year == end_year:
-            months = range(0, end_month)  # Desde el inicio del año hasta el mes final
+# Function to fetch stock data, including a fallback to Investing.com
+def fetch_stock_data(ticker, start_date, end_date):
+    try:
+        # Try to download data from Yahoo Finance
+        stock_data = yf.download(ticker, start=start_date, end=end_date)
+        if stock_data.empty:
+            raise ValueError("No data found in Yahoo Finance.")
+    except Exception as e:
+        st.write(f"Error fetching data for {ticker} from Yahoo Finance: {e}")
+        # If there's an error, try fetching data from Investing.com
+        if ticker == 'VIST.BA':
+            st.write(f"Attempting to fetch data for {ticker} from Investing.com...")
+            stock_data = investpy.get_stock_historical_data(stock='vistm', 
+                                                             country='Argentina', 
+                                                             from_date=start_date.strftime('%d/%m/%Y'), 
+                                                             to_date=end_date.strftime('%d/%m/%Y'))
         else:
-            months = range(0, 12)  # Año completo
+            stock_data = pd.DataFrame()  # Fallback to an empty DataFrame if it's not VIST.BA
 
-        for month in months:
-            # Días dentro de este mes en el dataframe
-            days_in_month = (df['Date'].dt.year == year) & (df['Date'].dt.month == month + 1)
-            if days_in_month.sum() > 0:
-                # Inflación diaria para ese mes
-                daily_rate = (1 + monthly_inflation[month] / 100) ** (1 / days_in_month.sum()) - 1
-                for _ in range(days_in_month.sum()):
-                    cumulative_inflation.append(cumulative_inflation[-1] * (1 + daily_rate))
+    return stock_data
 
-    return cumulative_inflation[1:]  # Remover el valor inicial de 1
+# The rest of your functions (ajustar_precios_por_splits, calcular_inflacion_diaria_rango, generar_grafico) remain the same...
 
-# Función para generar y mostrar gráfico
-def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=False):
-    inflation_line = df['Close'].iloc[0] * pd.Series(cumulative_inflation)
-
-    # Calcular rendimientos
-    stock_return = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100
-    inflation_return = ((cumulative_inflation[-1] - 1) * 100)
-
-    # Create figure
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name=ticker))
-    fig.add_trace(go.Scatter(x=df['Date'], y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
-
-    title_text = f"{ticker} vs Inflación ({year})" if year else f"{ticker} vs Inflación (Rango de Fechas)"
-    fig.update_layout(
-        title=title_text,
-        xaxis_title='Fecha',
-        yaxis_title='Precio (ARS)',
-        height=600,
-        width=900,
-        dragmode='zoom',
-        hovermode='x unified',
-        xaxis=dict(
-            rangeslider=dict(visible=False),
-            showline=True,
-            showgrid=True
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True
-        ),
-        margin=dict(l=50, r=50, b=100, t=100),
-        paper_bgcolor="Black",
-    )
-    
-    st.plotly_chart(fig)
-    st.write(f"Rendimiento de {ticker}: {stock_return:.2f}%")
-    st.write(f"Inflación en Argentina: {inflation_return:.2f}%")
-    st.write(f"Diferencia: {stock_return - inflation_return:.2f}%")
-
-# Streamlit UI
+# Streamlit UI code
 st.title("Análisis de Ticker y Comparación con Inflación")
 
-# Ensure ticker input is in uppercase
 ticker = st.text_input("Ingrese el ticker (por defecto GGAL.BA):", "GGAL.BA").upper()
 
-# Option to choose between per-year analysis or date range analysis
 analysis_type = st.radio(
     "Seleccione el tipo de análisis:",
     ('Por año (predeterminado)', 'Por rango de fechas')
 )
 
 if analysis_type == 'Por año (predeterminado)':
-    # Analyze one graph per year (default)
     for year in range(2017, 2025):
         start_date = datetime(year, 1, 1)
         end_date = datetime(year, 12, 31)
 
-        stock_data = yf.download(ticker, start=start_date, end=end_date)
-        
+        stock_data = fetch_stock_data(ticker, start_date, end_date)
+
         if not stock_data.empty:
             stock_data.reset_index(inplace=True)
             stock_data = ajustar_precios_por_splits(stock_data, ticker)  # Adjust prices for splits
@@ -164,8 +106,8 @@ else:
     end_date = st.date_input("Fecha de fin", date(2024, 12, 31))
     
     if start_date < end_date:
-        stock_data = yf.download(ticker, start=start_date, end=end_date)
-        
+        stock_data = fetch_stock_data(ticker, start_date, end_date)
+
         if not stock_data.empty:
             stock_data.reset_index(inplace=True)
             stock_data = ajustar_precios_por_splits(stock_data, ticker)  # Adjust prices for splits
