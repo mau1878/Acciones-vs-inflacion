@@ -65,7 +65,7 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
         yaxis_title='Precio (ARS)',
         height=600,
         width=900,
-        dragmode='pan',
+        dragmode='zoom',
         hovermode='x unified',
         xaxis=dict(
             rangeslider=dict(visible=False),
