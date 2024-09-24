@@ -1,5 +1,5 @@
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, date
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -18,12 +18,17 @@ inflation_rates = {
 
 # Función para calcular inflación acumulada diaria
 def calcular_inflacion_diaria(df, year):
+    if year not in inflation_rates:
+        return [1] * len(df)  # No inflation data for that year, return 1
+    
     monthly_inflation = inflation_rates[year]
     daily_inflation = []
+    
     for month, rate in enumerate(monthly_inflation):
         days_in_month = (df['Date'].dt.month == month + 1).sum()
-        daily_rate = (1 + rate / 100) ** (1 / days_in_month) - 1
-        daily_inflation.extend([daily_rate] * days_in_month)
+        if days_in_month > 0:
+            daily_rate = (1 + rate / 100) ** (1 / days_in_month) - 1
+            daily_inflation.extend([daily_rate] * days_in_month)
     
     # Ajustar la longitud de daily_inflation si es necesario
     daily_inflation = daily_inflation[:len(df)]
@@ -101,10 +106,10 @@ if analysis_type == 'Por año (predeterminado)':
             st.write(f"No se encontraron datos para {ticker} en el año {year}.")
 else:
     # Analyze for a custom date range
-    start_date = st.date_input("Seleccione la fecha de inicio (desde 2017):", datetime(2017, 1, 1))
-    end_date = st.date_input("Seleccione la fecha de fin:", datetime.now())
+    start_date = st.date_input("Seleccione la fecha de inicio (desde 2017):", date(2017, 1, 1))
+    end_date = st.date_input("Seleccione la fecha de fin:", date.today())
 
-    if start_date < datetime(2017, 1, 1):
+    if start_date < date(2017, 1, 1):
         st.error("La fecha de inicio no puede ser anterior al 1 de enero de 2017.")
     elif start_date >= end_date:
         st.error("La fecha de inicio debe ser anterior a la fecha de fin.")
@@ -116,11 +121,6 @@ else:
             stock_data.reset_index(inplace=True)  # Reset index to access date as a column
 
             # Inflación acumulada para cada año en el rango seleccionado
-            inflation_data = []
-            for year in range(start_date.year, end_date.year + 1):
-                if year in inflation_rates:
-                    inflation_data.extend(inflation_rates[year])
-
             cumulative_inflation = calcular_inflacion_diaria(stock_data, start_date.year)
             generar_grafico(ticker, stock_data, cumulative_inflation, date_range=True)
         else:
