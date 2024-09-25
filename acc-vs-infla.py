@@ -4,16 +4,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-# Monthly inflation rates
+# Monthly inflation rates (hypothetical example)
 inflation_rates = {
-    2017: [1.6, 2.5, 2.4, 2.6, 1.3, 1.2, 1.7, 1.4, 1.9, 1.5, 1.4, 3.1],
-    2018: [1.8, 2.4, 2.3, 2.7, 2.1, 3.7, 3.1, 3.9, 6.5, 5.4, 3.2, 2.6],
-    2019: [2.9, 3.8, 4.7, 3.4, 3.1, 2.7, 2.2, 4.0, 5.9, 3.3, 4.3, 3.7],
-    2020: [2.3, 2.0, 3.3, 1.5, 1.5, 2.2, 1.9, 2.7, 2.8, 3.8, 3.2, 4.0],
-    2021: [4.0, 3.6, 4.8, 4.1, 3.3, 3.2, 3.0, 2.5, 3.5, 3.5, 2.5, 3.8],
-    2022: [3.9, 4.7, 6.7, 6.0, 5.1, 5.3, 7.4, 7.0, 6.2, 6.3, 4.9, 5.1],
-    2023: [6.0, 6.6, 7.7, 8.4, 7.8, 6.0, 6.3, 12.4, 12.7, 8.3, 12.8, 25.5],
-    2024: [20.6, 13.2, 11.0, 9.2, 4.2, 4.6, 4.2, 3.5, 3.5, 3.3, 3.6, 3.3]  # Estimación ficticia
+    2023: [6.0, 6.6, 7.7, 8.4, 7.8, 6.0, 6.3, 12.4, 12.7, 8.3, 12.8, 25.5],  # Example for 2023
+    2024: [20.6, 13.2, 11.0, 9.2, 4.2, 4.6, 4.2, 3.5, 3.5, 3.3, 3.6, 3.3]   # Example for 2024
 }
 
 # Function to calculate daily inflation within a date range
@@ -25,25 +19,20 @@ def calcular_inflacion_diaria_rango(start_date, end_date):
         year = date.year
         month = date.month - 1  # Adjust for zero-indexing
         if year in inflation_rates:
-            daily_rate = (1 + inflation_rates[year][month] / 100) ** (1 / days_in_range.days_in_month) - 1
+            daily_rate = (1 + inflation_rates[year][month] / 100) ** (1 / 30) - 1  # Assume 30 days in a month
             cumulative_inflation.append(cumulative_inflation[-1] * (1 + daily_rate))
 
     return cumulative_inflation[1:]
 
-# Function to adjust prices for splits
-def ajustar_precios_por_splits(df, ticker):
-    # Implement your logic for stock splits if needed
-    df['Close'] = df['Close']  # Adjust as necessary
-    return df
-
 # Function to generate and display the graph
-def generar_grafico(portfolio_data, cumulative_inflation):
+def generar_grafico(portfolio_data, inflation_data):
     fig = go.Figure()
 
     # Calculate the portfolio value over time
-    total_portfolio_value = None
+    total_portfolio_value = pd.DataFrame()
+
     for ticker, data in portfolio_data.items():
-        if total_portfolio_value is None:
+        if total_portfolio_value.empty:
             total_portfolio_value = data['value']
         else:
             total_portfolio_value += data['value']
@@ -51,8 +40,9 @@ def generar_grafico(portfolio_data, cumulative_inflation):
         fig.add_trace(go.Scatter(x=data['df'].index, y=data['value'], mode='lines', name=ticker))
 
     # Calculate and plot cumulative inflation
-    inflation_line = total_portfolio_value.iloc[0] * pd.Series(cumulative_inflation)
-    fig.add_trace(go.Scatter(x=data['df'].index, y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
+    inflation_line = inflation_data * total_portfolio_value.iloc[0]  # Scale inflation to start at the same value
+    fig.add_trace(go.Scatter(x=portfolio_data[list(portfolio_data.keys())[0]]['df'].index,
+                             y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
 
     fig.update_layout(
         title="Análisis del Portafolio vs Inflación",
@@ -84,7 +74,6 @@ end_date = st.date_input("Fecha de fin", datetime.today())
 # Fetch and analyze data
 if portfolio_input:
     portfolio_data = {}
-    total_value = 0
     tickers = [item.split('*')[0].strip() for item in portfolio_input.split('+')]
 
     # Process each ticker in the portfolio
@@ -95,26 +84,20 @@ if portfolio_input:
                 st.warning(f"No se encontraron datos para el ticker {ticker}.")
                 continue
             
-            # Adjust prices for splits and calculate total value
-            df = ajustar_precios_por_splits(df, ticker)
             weight = float(portfolio_input.split(ticker + '*')[1].split('+')[0].strip()) if '*' in portfolio_input else 1.0
+            
+            # Store adjusted value in portfolio_data
             portfolio_data[ticker] = {
                 'df': df,
                 'value': df['Close'] * weight
             }
 
-            # Update total value
-            if total_value is None:
-                total_value = portfolio_data[ticker]['value']
-            else:
-                total_value += portfolio_data[ticker]['value']
-
         except Exception as e:
             st.error(f"Se produjo un error al recuperar los datos para {ticker}: {e}")
 
     # Calculate cumulative inflation
-    cumulative_inflation = calcular_inflacion_diaria_rango(start_date, end_date)
+    inflation_data = calcular_inflacion_diaria_rango(start_date, end_date)
 
     # Generate the graph if data is available
     if portfolio_data:
-        generar_grafico(portfolio_data, cumulative_inflation)
+        generar_grafico(portfolio_data, inflation_data)
