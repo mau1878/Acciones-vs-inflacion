@@ -272,15 +272,15 @@ st.title("Análisis de Expresiones con Tickers y Comparación con Inflación")
 st.markdown("""
 Esta aplicación permite analizar expresiones matemáticas complejas que involucran diferentes tickers bursátiles y compararlos con la inflación en Argentina.
 
-**Ejemplos de expresiones válidas:**
+**Ejemplos de expresiones válidas (USAR SIEMPRE MAYÚSCULAS!!!!!):**
 - `VIST/(YPFD.BA/YPF)`
-- `GGAL.BA + TXR.BA/ALUA.BA`
+- `GGAL.BA + TXAR.BA/ALUA.BA`
 - `AAPL.BA * 2 - GOOGL.BA / MSFT.BA`
 """)
 
 # Input for expression
 expression_input = st.text_input(
-  "Ingrese la expresión con tickers (por ejemplo `VIST/(YPFD.BA/YPF)` o `GGAL.BA + TXR.BA/ALUA.BA`):",
+  "Ingrese la expresión con tickers (por ejemplo `VIST/(YPFD.BA/YPF)` o `GGAL.BA + TXAR.BA/ALUA.BA`):",
   "GGAL.BA*1"
 )
 
