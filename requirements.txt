@@ -2,7 +2,5 @@ yfinance
 pandas
 plotly
 streamlit
-investpy
-sympy
-re
+sympy==1.11.1
 numpy
