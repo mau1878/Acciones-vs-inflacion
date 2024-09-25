@@ -5,3 +5,4 @@ streamlit
 investpy
 sympy
 re
+numpy
