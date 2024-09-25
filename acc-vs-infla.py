@@ -163,4 +163,38 @@ try:
             st.warning(f"No se encontraron datos para el ticker {ticker}.")
         else:
             df = ajustar_precios_por_splits(df, ticker)
-            cumulative_inflation = calcular_inflacion_di
+            cumulative_inflation = calcular_inflacion_diaria_rango(df, start_date.year, start_date.month, end_date.year, end_date.month)
+            st.write(f"Datos obtenidos para {ticker}:")
+            st.write(df)
+
+            # Procesar la entrada de la cartera
+            portfolio_data = {}
+            if portfolio_input:
+                assets = portfolio_input.split(' + ')
+                for asset in assets:
+                    ticker_info = asset.split('*')
+                    if len(ticker_info) == 2:
+                        asset_ticker = ticker_info[0].strip()
+                        weight = float(ticker_info[1].strip())
+                        if weight < 0:
+                            st.warning(f"El peso para {asset_ticker} no puede ser negativo.")
+                            continue
+                        if asset_ticker not in portfolio_data:
+                            portfolio_data[asset_ticker] = {'weight': weight}
+                        else:
+                            portfolio_data[asset_ticker]['weight'] += weight
+                    else:
+                        st.warning(f"Entrada de activo no válida: {asset}")
+                
+                # Fetch data for all assets in the portfolio
+                for asset_ticker in portfolio_data.keys():
+                    asset_df = yf.download(asset_ticker, start=start_date, end=end_date)
+                    asset_df = ajustar_precios_por_splits(asset_df, asset_ticker)
+                    portfolio_data[asset_ticker]['df'] = asset_df
+                    portfolio_data[asset_ticker]['value'] = asset_df['Close'] * portfolio_data[asset_ticker]['weight']
+
+            # Generar el gráfico
+            generar_grafico(portfolio_data, cumulative_inflation)
+
+except Exception as e:
+    st.error(f"Ocurrió un error: {str(e)}")
