@@ -139,7 +139,7 @@ def generar_grafico(expression_str, df, cumulative_inflation, year=None, date_ra
       # Crear la figura
       fig = go.Figure()
       fig.add_trace(go.Scatter(x=df['Date'].iloc[:min_length], y=df['Result'].iloc[:min_length],
-                               name="Activo o cartera seleccionada", mode='lines'))
+                               name="Activo", mode='lines'))
       fig.add_trace(go.Scatter(x=df['Date'].iloc[:min_length], y=inflation_line,
                                name='Inflación', line=dict(dash='dash', color='red'), mode='lines'))
 
