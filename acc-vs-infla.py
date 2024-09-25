@@ -1,12 +1,8 @@
 import yfinance as yf
-from alpha_vantage.timeseries import TimeSeries
 from datetime import datetime, date
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-
-# Your Alpha Vantage API key
-ALPHA_VANTAGE_API_KEY = '1O4G91JNDJ8PA6RW'  # Replace with your actual API key
 
 # Inflación mensual estimada (datos corregidos)
 inflation_rates = {
@@ -20,7 +16,7 @@ inflation_rates = {
   2024: [20.6, 13.2, 11.0, 9.2, 4.2, 4.6, 4.2, 3.5, 3.5, 3.3, 3.6, 3.3]  # Estimación ficticia
 }
 
-# Diccionario de tickers y sus divisores (splits)
+# Diccionario de tickers y sus divisores
 splits = {
   'MMM.BA': 2,
   'ADGO.BA': 1,
@@ -76,7 +72,7 @@ def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_m
 
       monthly_inflation = inflation_rates[year]
 
-      # Define el rango de meses a considerar para el año
+      # Define the range of months to consider for the year
       if year == start_year:
           months = range(start_month - 1, 12)  # Desde el mes de inicio hasta el final del año
       elif year == end_year:
@@ -101,7 +97,7 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
 
   # Calcular rendimientos
   stock_return = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100
-  inflation_return = ((inflation_line.iloc[-1] - inflation_line.iloc[0]) / inflation_line.iloc[0]) * 100
+  inflation_return = ((cumulative_inflation[-1] - 1) * 100)
 
   # Create figure
   fig = go.Figure()
@@ -112,7 +108,7 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
   fig.update_layout(
       title=title_text,
       xaxis_title='Fecha',
-      yaxis_title='Valor',
+      yaxis_title='Precio (ARS)',
       height=600,
       width=900,
       dragmode='zoom',
@@ -127,7 +123,7 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
           showgrid=True
       ),
       margin=dict(l=50, r=50, b=100, t=100),
-      paper_bgcolor="White",
+      paper_bgcolor="Black",
   )
   
   st.plotly_chart(fig)
@@ -150,48 +146,12 @@ def parse_portfolio(input_str):
       portfolio.append((ticker.upper(), weight))
   return portfolio
 
-# Función para obtener datos de un ticker usando yfinance o Alpha Vantage
-def fetch_stock_data(ticker, start_date, end_date):
-  try:
-      # Intentar con yfinance
-      data = yf.download(ticker, start=start_date, end=end_date)
-      if not data.empty:
-          data.reset_index(inplace=True)
-          return data
-      else:
-          st.write(f"No se encontraron datos para {ticker} usando yfinance. Intentando con Alpha Vantage...")
-          # Intentar con Alpha Vantage
-          data = fetch_data_alpha_vantage(ticker, start_date, end_date)
-          return data
-  except Exception as e:
-      st.write(f"Error al obtener datos para {ticker}: {e}")
-      return pd.DataFrame()
-
-# Función para obtener datos desde Alpha Vantage
-def fetch_data_alpha_vantage(ticker, start_date, end_date):
-  ts = TimeSeries(key=ALPHA_VANTAGE_API_KEY, output_format='pandas')
-  try:
-      data, meta_data = ts.get_daily_adjusted(symbol=ticker, outputsize='full')
-      data.reset_index(inplace=True)
-      data.rename(columns={
-          'date': 'Date',
-          'adjusted close': 'Close'
-      }, inplace=True)
-      data['Date'] = pd.to_datetime(data['Date'])
-      mask = (data['Date'] >= pd.to_datetime(start_date)) & (data['Date'] <= pd.to_datetime(end_date))
-      data = data.loc[mask]
-      data.sort_values('Date', inplace=True)
-      return data
-  except Exception as e:
-      st.write(f"Error al obtener datos de Alpha Vantage para {ticker}: {e}")
-      return pd.DataFrame()
-
 # Streamlit UI
-st.title("Análisis de Portafolio y Comparación con Inflación")
+st.title("Análisis de Ticker y Comparación con Inflación")
 
 # Input for portfolio
 portfolio_input = st.text_input(
-  "Ingrese el ticker o portafolio (por ejemplo GGAL.BA*0.5+PAMP.BA*0.2+VIST.BA*0.05+YPFD.BA*0.25):",
+  "Ingrese el ticker o portafolio (por ejemplo GGAL.BA*0.5+PAMP.BA*0.2+SPY.BA*0.05+YPFD.BA*0.25):",
   "GGAL.BA*1"
 )
 
@@ -212,10 +172,11 @@ if analysis_type == 'Por año (predeterminado)':
 
       # Initialize df_portfolio
       df_portfolio = None
-
+      
       for ticker, weight in portfolio:
-          stock_data = fetch_stock_data(ticker, start_date, end_date)
+          stock_data = yf.download(ticker, start=start_date, end=end_date)
           if not stock_data.empty:
+              stock_data.reset_index(inplace=True)
               stock_data = ajustar_precios_por_splits(stock_data, ticker)
               stock_data.rename(columns={'Close': f'Close_{ticker}'}, inplace=True)
               stock_data = stock_data[['Date', f'Close_{ticker}']]
@@ -260,9 +221,10 @@ else:
       df_portfolio = None
       
       for ticker, weight in portfolio:
-          stock_data = fetch_stock_data(ticker, start_date, end_date)
+          stock_data = yf.download(ticker, start=start_date, end=end_date)
           if not stock_data.empty:
-              stock_data = ajustar_precios_por_splits(stock_data, ticker)
+              stock_data.reset_index(inplace=True)
+              stock_data = ajustar_precios_por_splits(stock_data, ticker)  # Adjust prices for splits
               stock_data.rename(columns={'Close': f'Close_{ticker}'}, inplace=True)
               stock_data = stock_data[['Date', f'Close_{ticker}']]
               if df_portfolio is None:
