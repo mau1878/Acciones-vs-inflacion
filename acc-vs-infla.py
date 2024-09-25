@@ -1,5 +1,5 @@
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -152,58 +152,65 @@ analysis_type = st.selectbox("Seleccione tipo de análisis:", ('Por año (predet
 # Date inputs only appear if the user selects the date range analysis
 start_date = None
 end_date = None
+
 if analysis_type == 'Por rango de fechas':
     start_date = st.date_input("Fecha de inicio", datetime(2023, 1, 1))
     end_date = st.date_input("Fecha de fin", datetime.today())
     st.write("Análisis por rango de fechas seleccionado.")
+else:  # Por año (predeterminado)
+    start_date = datetime(2017, 1, 1)
+    end_date = datetime.today()  # This can also be modified to the end of the current year if preferred.
 
-# Convert start_date and end_date to datetime
-if start_date is not None:
-    start_date = datetime.combine(start_date, datetime.min.time())
-if end_date is not None:
-    end_date = datetime.combine(end_date, datetime.max.time())
+# Convert start_date and end_date to datetime if necessary
+# No need to convert, they are already datetime objects
+# if start_date is not None:
+#     start_date = datetime.combine(start_date, datetime.min.time())
+# if end_date is not None:
+#     end_date = datetime.combine(end_date, datetime.max.time())
 
 # Fetch data
 try:
     if ticker:
-        df = yf.download(ticker, start=start_date, end=end_date)
-        if df.empty:
-            st.warning(f"No se encontraron datos para {ticker}.")
-            st.stop()
-
-        df = ajustar_precios_por_splits(df, ticker)
-        cumulative_inflation = calcular_inflacion_diaria_rango(df, start_date.year, start_date.month, end_date.year, end_date.month)
-        st.write(f"Datos obtenidos para {ticker}:")
-        st.write(df)
-
-        # Procesar la entrada de la cartera
-        portfolio_data = {}
-        if portfolio_input:
-            assets = portfolio_input.split(' + ')
-            for asset in assets:
-                ticker_info = asset.split('*')
-                if len(ticker_info) == 2:
-                    asset_ticker = ticker_info[0].strip()
-                    weight = float(ticker_info[1].strip())
-                    if weight < 0:
-                        st.warning(f"El peso para {asset_ticker} no puede ser negativo.")
-                        continue
-                    if asset_ticker not in portfolio_data:
-                        portfolio_data[asset_ticker] = {'weight': weight}
-                    else:
-                        portfolio_data[asset_ticker]['weight'] += weight
-                else:
-                    st.warning(f"Entrada de activo no válida: {asset}")
+        for year in range(2017, 2025):  # Adjust year range as necessary
+            year_start = datetime(year, 1, 1)
+            year_end = datetime(year, 12, 31)
             
-            # Fetch data for all assets in the portfolio
-            for asset_ticker in portfolio_data.keys():
-                asset_df = yf.download(asset_ticker, start=start_date, end=end_date)
-                asset_df = ajustar_precios_por_splits(asset_df, asset_ticker)
-                portfolio_data[asset_ticker]['df'] = asset_df
-                portfolio_data[asset_ticker]['value'] = asset_df['Close'] * portfolio_data[asset_ticker]['weight']
+            df = yf.download(ticker, start=year_start, end=year_end)
+            if df.empty:
+                st.warning(f"No se encontraron datos para {ticker} en {year}.")
+                continue
 
-        # Generate the graph
-        generar_grafico(portfolio_data, cumulative_inflation, start_date)
+            df = ajustar_precios_por_splits(df, ticker)
+            cumulative_inflation = calcular_inflacion_diaria_rango(df, year_start.year, year_start.month, year_end.year, year_end.month)
+
+            # Procesar la entrada de la cartera
+            portfolio_data = {}
+            if portfolio_input:
+                assets = portfolio_input.split(' + ')
+                for asset in assets:
+                    ticker_info = asset.split('*')
+                    if len(ticker_info) == 2:
+                        asset_ticker = ticker_info[0].strip()
+                        weight = float(ticker_info[1].strip())
+                        if weight < 0:
+                            st.warning(f"El peso para {asset_ticker} no puede ser negativo.")
+                            continue
+                        if asset_ticker not in portfolio_data:
+                            portfolio_data[asset_ticker] = {'weight': weight}
+                        else:
+                            portfolio_data[asset_ticker]['weight'] += weight
+                    else:
+                        st.warning(f"Entrada de activo no válida: {asset}")
+                
+                # Fetch data for all assets in the portfolio
+                for asset_ticker in portfolio_data.keys():
+                    asset_df = yf.download(asset_ticker, start=year_start, end=year_end)
+                    asset_df = ajustar_precios_por_splits(asset_df, asset_ticker)
+                    portfolio_data[asset_ticker]['df'] = asset_df
+                    portfolio_data[asset_ticker]['value'] = asset_df['Close'] * portfolio_data[asset_ticker]['weight']
+
+            # Generate the graph for the specific year
+            generar_grafico(portfolio_data, cumulative_inflation, year_start)
 
 except Exception as e:
     st.error(f"Ocurrió un error: {str(e)}")
