@@ -53,12 +53,17 @@ splits = {
 
 # Función para ajustar precios por splits
 def ajustar_precios_por_splits(df, ticker):
+    # Ensure the index is in datetime format
+    df.index = pd.to_datetime(df.index)
+
     if ticker == 'AGRO.BA':
-        df.loc[df['Date'] < datetime(2023, 11, 3), 'Close'] /= 6
-        df.loc[df['Date'] == datetime(2023, 11, 3), 'Close'] *= 2.1
+        # Adjusting prices based on the index for date filtering
+        df.loc[df.index < datetime(2023, 11, 3), 'Close'] /= 6
+        df.loc[df.index == datetime(2023, 11, 3), 'Close'] *= 2.1
     else:
         divisor = splits.get(ticker, 1)
-        df.loc[df['Date'] <= datetime(2024, 1, 23), 'Close'] /= divisor
+        df.loc[df.index <= datetime(2024, 1, 23), 'Close'] /= divisor
+
     return df
 
 # Función para calcular inflación diaria acumulada dentro de un rango de fechas
@@ -152,6 +157,7 @@ def calcular_portafolio(portfolio_str, start_date, end_date):
         
         # Fetch stock data
         df = yf.download(ticker, start=start_date, end=end_date)
+        st.write(df.head())
         df = ajustar_precios_por_splits(df, ticker)
         
         stock_values.append((df['Close'] * weight).sum())  # Weighted stock value
