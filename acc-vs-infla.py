@@ -157,6 +157,12 @@ if analysis_type == 'Por rango de fechas':
     end_date = st.date_input("Fecha de fin", datetime.today())
     st.write("Análisis por rango de fechas seleccionado.")
 
+# Convert start_date and end_date to datetime
+if start_date is not None:
+    start_date = datetime.combine(start_date, datetime.min.time())
+if end_date is not None:
+    end_date = datetime.combine(end_date, datetime.max.time())
+
 # Fetch data
 try:
     if ticker:
