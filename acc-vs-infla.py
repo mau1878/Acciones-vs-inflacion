@@ -131,22 +131,60 @@ st.title("Análisis de Ticker y Comparación con Inflación")
 # Ensure ticker input is in uppercase
 ticker = st.text_input("Ingrese el ticker (por defecto GGAL.BA):", "GGAL.BA").upper()
 
-# Date input fields
-start_date = st.date_input("Fecha de inicio:", date(2023, 1, 1))
-end_date = st.date_input("Fecha de fin:", date.today())
+# New input for portfolio weights
+portfolio_input = st.text_input("Ingrese su cartera (ejemplo: GGAL.BA*0.5 + PAMP.BA*0.2 + SPY.BA*0.05 + YPFD.BA*0.25):", 
+                                 "GGAL.BA*0.5 + PAMP.BA*0.2 + SPY.BA*0.05 + YPFD.BA*0.25")
 
-# Get stock data
+# Option to choose between per-year analysis or date range analysis
+analysis_type = st.radio(
+    "Seleccione el tipo de análisis:",
+    ('Por año (predeterminado)', 'Por rango de fechas')
+)
+
+# Function to calculate portfolio value based on user input
+def calcular_portafolio(portfolio_str, start_date, end_date):
+    stocks = portfolio_str.split("+")
+    stock_values = []
+    for stock in stocks:
+        parts = stock.strip().split("*")
+        ticker = parts[0].strip()
+        weight = float(parts[1].strip()) if len(parts) > 1 else 1.0
+        
+        # Fetch stock data
+        df = yf.download(ticker, start=start_date, end=end_date)
+        df = ajustar_precios_por_splits(df, ticker)
+        
+        stock_values.append((df['Close'] * weight).sum())  # Weighted stock value
+    return sum(stock_values)
+
+# Year selection if analysis type is by year
+if analysis_type == 'Por año (predeterminado)':
+    year = st.selectbox("Seleccione un año:", list(range(2017, 2025)))
+    start_date = f"{year}-01-01"
+    end_date = f"{year}-12-31"
+else:
+    start_date = st.date_input("Seleccione la fecha de inicio:", date(2024, 1, 1))
+    end_date = st.date_input("Seleccione la fecha de finalización:", date.today())
+    start_date = str(start_date)
+    end_date = str(end_date)
+
+# Calculate inflation-adjusted prices
+start_year = int(start_date.split("-")[0])
+start_month = int(start_date.split("-")[1])
+end_year = int(end_date.split("-")[0])
+end_month = int(end_date.split("-")[1])
+
+# Get stock data and inflation
 df = yf.download(ticker, start=start_date, end=end_date)
-
-# Reset the index to make 'Date' a column
-df.reset_index(inplace=True)
-
-# Ajustar precios por splits
 df = ajustar_precios_por_splits(df, ticker)
+cumulative_inflation = calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_month)
 
-# Calculate inflation
-cumulative_inflation = calcular_inflacion_diaria_rango(df, start_date.year, start_date.month, end_date.year, end_date.month)
+# Generate chart
+if st.button("Generar Gráfico"):
+    generar_grafico(ticker, df, cumulative_inflation, year if analysis_type == 'Por año (predeterminado)' else None, 
+                     date_range=(analysis_type == 'Por rango de fechas'))
 
-# Generate and display graph
-generar_grafico(ticker, df, cumulative_inflation, year=start_date.year)
-
+# Calculate and display portfolio value
+if st.button("Calcular Valor de la Cartera"):
+    total_portfolio_value = calcular_portafolio(portfolio_input, start_date, end_date)
+    st.write(f"Valor total de la cartera: {total_portfolio_value:.2f} ARS")
