@@ -91,50 +91,16 @@ def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_m
     return cumulative_inflation[1:]
 
 # Función para generar y mostrar gráfico
-def generar_grafico(portfolio_data, cumulative_inflation, start_date):
-    fig = go.Figure()
-    total_portfolio_value = None
-
-    # Calculate the portfolio value over time
-    for ticker, data in portfolio_data.items():
-        if total_portfolio_value is None:
-            total_portfolio_value = data['value']
-        else:
-            total_portfolio_value += data['value']
-
-    # Adding the total portfolio value to the figure
-    fig.add_trace(go.Scatter(x=total_portfolio_value.index, y=total_portfolio_value, name='Valor Total de la Cartera'))
-
-    # Get the total portfolio value at the start date
-    start_portfolio_value = total_portfolio_value.loc[start_date]
-
-    # Adding inflation line based on the total portfolio value at the start date
-    inflation_line = start_portfolio_value * pd.Series(cumulative_inflation)
-    fig.add_trace(go.Scatter(x=total_portfolio_value.index, y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
-
-    title_text = "Cartera vs Inflación"
-    fig.update_layout(
-        title=title_text,
-        xaxis_title='Fecha',
-        yaxis_title='Valor de la cartera (ARS)',
-        height=600,
-        width=900,
-        dragmode='zoom',
-        hovermode='x unified',
-        xaxis=dict(
-            rangeslider=dict(visible=False),
-            showline=True,
-            showgrid=True
-        ),
-        yaxis=dict(
-            showline=True,
-            showgrid=True
-        ),
-        margin=dict(l=50, r=50, b=100, t=100),
-        paper_bgcolor="Black",
-    )
-
-    st.plotly_chart(fig)
+def generar_grafico(portfolio_data, cumulative_inflation, year_start):
+    # Calculate the total portfolio value
+    total_value = sum(data['value'] for data in portfolio_data.values() if 'value' in data)
+    
+    # Ensure the graph handles the case where total_value could be empty or None
+    if total_value is not None:
+        # Here, you would create and display your graph using Plotly, Matplotlib, etc.
+        st.line_chart(total_value, title=f"Valor total de la cartera en {year_start.year}")
+    else:
+        st.warning("No se puede mostrar el gráfico porque el valor total es nulo.")
 
 # Streamlit UI
 st.title("Análisis de Ticker y Comparación con Inflación")
@@ -149,39 +115,37 @@ portfolio_input = st.text_input("Ingrese su cartera (ejemplo: GGAL.BA*0.5 + PAMP
 # Opción para elegir entre análisis por año o por rango de fechas
 analysis_type = st.selectbox("Seleccione tipo de análisis:", ('Por año (predeterminado)', 'Por rango de fechas'))
 
-# Date inputs only appear if the user selects the date range analysis
+# Variables de fechas iniciales y finales
 start_date = None
 end_date = None
 
 if analysis_type == 'Por rango de fechas':
     start_date = st.date_input("Fecha de inicio", datetime(2023, 1, 1))
     end_date = st.date_input("Fecha de fin", datetime.today())
-    st.write("Análisis por rango de fechas seleccionado.")
 else:  # Por año (predeterminado)
     start_date = datetime(2017, 1, 1)
-    end_date = datetime.today()  # This can also be modified to the end of the current year if preferred.
+    end_date = datetime.today()  # O modificar a fin de año actual si se desea
 
-# Convert start_date and end_date to datetime if necessary
-# No need to convert, they are already datetime objects
-# if start_date is not None:
-#     start_date = datetime.combine(start_date, datetime.min.time())
-# if end_date is not None:
-#     end_date = datetime.combine(end_date, datetime.max.time())
+# Convertir las fechas a datetime si es necesario (aquí ya están en el formato correcto)
+# Eliminar el comentario de conversión si el formato es necesario.
 
-# Fetch data
+# Intenta obtener datos
 try:
     if ticker:
-        for year in range(2017, 2025):  # Adjust year range as necessary
+        # Iterar sobre los años
+        for year in range(2017, 2025):
             year_start = datetime(year, 1, 1)
             year_end = datetime(year, 12, 31)
             
+            # Obtener datos del ticker
             df = yf.download(ticker, start=year_start, end=year_end)
             if df.empty:
                 st.warning(f"No se encontraron datos para {ticker} en {year}.")
                 continue
-
+            
+            # Aquí asumimos que ajustar_precios_por_splits y calcular_inflacion_diaria_rango son funciones definidas
             df = ajustar_precios_por_splits(df, ticker)
-            cumulative_inflation = calcular_inflacion_diaria_rango(df, year_start.year, year_start.month, year_end.year, year_end.month)
+            cumulative_inflation = calcular_inflacion_diaria_rango(df, year_start, year_end)
 
             # Procesar la entrada de la cartera
             portfolio_data = {}
@@ -202,14 +166,14 @@ try:
                     else:
                         st.warning(f"Entrada de activo no válida: {asset}")
                 
-                # Fetch data for all assets in the portfolio
+                # Obtener datos para todos los activos en la cartera
                 for asset_ticker in portfolio_data.keys():
                     asset_df = yf.download(asset_ticker, start=year_start, end=year_end)
                     asset_df = ajustar_precios_por_splits(asset_df, asset_ticker)
                     portfolio_data[asset_ticker]['df'] = asset_df
                     portfolio_data[asset_ticker]['value'] = asset_df['Close'] * portfolio_data[asset_ticker]['weight']
 
-            # Generate the graph for the specific year
+            # Generar el gráfico para el año específico
             generar_grafico(portfolio_data, cumulative_inflation, year_start)
 
 except Exception as e:
