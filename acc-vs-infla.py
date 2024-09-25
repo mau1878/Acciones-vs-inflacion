@@ -3,7 +3,12 @@ from datetime import datetime, date
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import numpy as np
+import sympy as sp
+from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
+import re
 
+# ------------------------------
 # Inflación mensual estimada (datos corregidos)
 inflation_rates = {
   2017: [1.6, 2.5, 2.4, 2.6, 1.3, 1.2, 1.7, 1.4, 1.9, 1.5, 1.4, 3.1],
@@ -16,6 +21,7 @@ inflation_rates = {
   2024: [20.6, 13.2, 11.0, 9.2, 4.2, 4.6, 4.2, 3.5, 3.5, 3.3, 3.6, 3.3]  # Estimación ficticia
 }
 
+# ------------------------------
 # Diccionario de tickers y sus divisores
 splits = {
   'MMM.BA': 2,
@@ -51,17 +57,21 @@ splits = {
   'AGRO.BA': (6, 2.1)  # Ajustes para AGRO.BA
 }
 
+# ------------------------------
 # Función para ajustar precios por splits
 def ajustar_precios_por_splits(df, ticker):
   if ticker == 'AGRO.BA':
       # Ajuste para AGRO.BA
-      df.loc[df['Date'] < datetime(2023, 11, 3), 'Close'] /= 6
-      df.loc[df['Date'] == datetime(2023, 11, 3), 'Close'] *= 2.1
+      split_date = datetime(2023, 11, 3)
+      df.loc[df['Date'] < split_date, 'Close'] /= 6
+      df.loc[df['Date'] == split_date, 'Close'] *= 2.1
   else:
       divisor = splits.get(ticker, 1)  # Valor por defecto es 1 si no está en el diccionario
-      df.loc[df['Date'] <= datetime(2024, 1, 23), 'Close'] /= divisor
+      split_threshold_date = datetime(2024, 1, 23)
+      df.loc[df['Date'] <= split_threshold_date, 'Close'] /= divisor
   return df
 
+# ------------------------------
 # Función para calcular inflación diaria acumulada dentro de un rango de fechas
 def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_month):
   cumulative_inflation = [1]  # Comienza con 1 para no alterar los valores
@@ -72,43 +82,50 @@ def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_m
 
       monthly_inflation = inflation_rates[year]
 
-      # Define the range of months to consider for the year
+      # Define the range of months to consider para el año actual
       if year == start_year:
-          months = range(start_month - 1, 12)  # Desde el mes de inicio hasta el final del año
+          months = range(start_month - 1, 12)  # Desde el mes de inicio hasta diciembre
       elif year == end_year:
-          months = range(0, end_month)  # Desde el inicio del año hasta el mes final
+          months = range(0, end_month)  # Desde enero hasta el mes final
       else:
           months = range(0, 12)  # Año completo
 
       for month in months:
           # Días dentro de este mes en el dataframe
           days_in_month = (df['Date'].dt.year == year) & (df['Date'].dt.month == month + 1)
-          if days_in_month.sum() > 0:
+          num_days = days_in_month.sum()
+          if num_days > 0:
               # Inflación diaria para ese mes
-              daily_rate = (1 + monthly_inflation[month] / 100) ** (1 / days_in_month.sum()) - 1
-              for _ in range(days_in_month.sum()):
+              daily_rate = (1 + monthly_inflation[month] / 100) ** (1 / num_days) - 1
+              for _ in range(num_days):
                   cumulative_inflation.append(cumulative_inflation[-1] * (1 + daily_rate))
 
   return cumulative_inflation[1:]  # Remover el valor inicial de 1
 
+# ------------------------------
 # Función para generar y mostrar gráfico
-def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=False):
-  inflation_line = df['Close'].iloc[0] * pd.Series(cumulative_inflation)
+def generar_grafico(expression_str, df, cumulative_inflation, year=None, date_range=False):
+  if df.empty:
+      st.write("El DataFrame está vacío. No se puede generar el gráfico.")
+      return
+
+  initial_value = df['Result'].iloc[0]
+  inflation_line = initial_value * pd.Series(cumulative_inflation, index=df.index)
 
   # Calcular rendimientos
-  stock_return = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100
+  expression_return = ((df['Result'].iloc[-1] - initial_value) / initial_value) * 100
   inflation_return = ((cumulative_inflation[-1] - 1) * 100)
 
-  # Create figure
+  # Crear la figura
   fig = go.Figure()
-  fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name=ticker))
+  fig.add_trace(go.Scatter(x=df['Date'], y=df['Result'], name=expression_str))
   fig.add_trace(go.Scatter(x=df['Date'], y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
 
-  title_text = f"{ticker} vs Inflación ({year})" if year else f"{ticker} vs Inflación (Rango de Fechas)"
+  title_text = f"{expression_str} vs Inflación ({year})" if year else f"{expression_str} vs Inflación (Rango de Fechas)"
   fig.update_layout(
       title=title_text,
       xaxis_title='Fecha',
-      yaxis_title='Precio (ARS)',
+      yaxis_title='Valor (ARS)',
       height=600,
       width=900,
       dragmode='zoom',
@@ -126,37 +143,79 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
       paper_bgcolor="Black",
   )
   
+  # Configurar el color de fondo de la figura
+  fig.update_layout(plot_bgcolor='white')
+
   st.plotly_chart(fig)
-  st.write(f"Rendimiento de {ticker}: {stock_return:.2f}%")
-  st.write(f"Inflación en Argentina: {inflation_return:.2f}%")
-  st.write(f"Diferencia: {stock_return - inflation_return:.2f}%")
+  st.write(f"**Rendimiento de {expression_str}:** {expression_return:.2f}%")
+  st.write(f"**Inflación en Argentina:** {inflation_return:.2f}%")
+  st.write(f"**Diferencia:** {expression_return - inflation_return:.2f}%")
 
-# Función para parsear el portafolio
-def parse_portfolio(input_str):
-  portfolio = []
-  for part in input_str.split('+'):
-      part = part.strip()
-      if '*' in part:
-          ticker, weight = part.split('*')
-          ticker = ticker.strip()
-          weight = float(weight.strip())
-      else:
-          ticker = part.strip()
-          weight = 1.0  # Default weight
-      portfolio.append((ticker.upper(), weight))
-  return portfolio
+# ------------------------------
+# Función para parsear la expresión y extraer tickers
+def parse_expression(input_str):
+  # Definir transformaciones para permitir multiplicación implícita, etc.
+  transformations = (standard_transformations + (implicit_multiplication_application,))
+  
+  # Extraer tickers usando regex
+  potential_tickers = set(re.findall(r'[A-Za-z0-9\._]+', input_str))
+  
+  # Crear símbolos permitidos
+  allowed_symbols = {}
+  for t in potential_tickers:
+      allowed_symbols[t] = sp.Symbol(t)
+  
+  # Parsear expresión
+  try:
+      expr = parse_expr(input_str, local_dict=allowed_symbols, transformations=transformations)
+  except Exception as e:
+      raise ValueError(f"Expresión inválida: {e}")
+  
+  # Extraer tickers únicos utilizados en la expresión
+  tickers = sorted([str(symbol) for symbol in expr.free_symbols])
+  
+  return expr, tickers
 
+# ------------------------------
+# Función para evaluar la expresión sobre el DataFrame
+def evaluate_expression(expr, df):
+  # Extraer símbolos (tickers) de la expresión
+  symbols_in_expr = expr.free_symbols
+  
+  # Crear función lambdificada con argumentos nombrados
+  func = sp.lambdify(symbols_in_expr, expr, modules='numpy')
+  
+  # Preparar argumentos con valores de cada ticker
+  args_dict = {str(s): df[str(s)] for s in symbols_in_expr}
+  
+  # Evaluar la expresión
+  try:
+      result = func(**args_dict)
+  except ZeroDivisionError:
+      raise ZeroDivisionError("División por cero ocurrió al evaluar la expresión.")
+  except Exception as e:
+      raise ValueError(f"Error al evaluar la expresión: {e}")
+  
+  return result
+
+# ------------------------------
 # Streamlit UI
-st.title("Análisis de Ticker y Comparación con Inflación")
+st.title("Análisis de Expresiones con Tickers y Comparación con Inflación")
 
-# Input for portfolio
-portfolio_input = st.text_input(
-  "Ingrese el ticker o portafolio (por ejemplo GGAL.BA*0.5+PAMP.BA*0.2+SPY.BA*0.05+YPFD.BA*0.25):",
+st.markdown("""
+Esta aplicación permite analizar expresiones matemáticas complejas que involucran diferentes tickers bursátiles y compararlos con la inflación en Argentina.
+
+**Ejemplos de expresiones válidas:**
+- `VIST/(YPFD.BA/YPF)`
+- `GGAL.BA + TXR.BA/ALUA.BA`
+- `AAPL.BA * 2 - GOOGL.BA / MSFT.BA`
+""")
+
+# Input for expression
+expression_input = st.text_input(
+  "Ingrese la expresión con tickers (por ejemplo `VIST/(YPFD.BA/YPF)` o `GGAL.BA + TXR.BA/ALUA.BA`):",
   "GGAL.BA*1"
 )
-
-# Parse the portfolio input
-portfolio = parse_portfolio(portfolio_input)
 
 # Option to choose between per-year analysis or date range analysis
 analysis_type = st.radio(
@@ -164,99 +223,145 @@ analysis_type = st.radio(
   ('Por año (predeterminado)', 'Por rango de fechas')
 )
 
+# ------------------------------
 if analysis_type == 'Por año (predeterminado)':
   # Analyze one graph per year (default)
   for year in range(2017, 2025):
+      st.header(f"Análisis para el año {year}")
       start_date = datetime(year, 1, 1)
       end_date = datetime(year, 12, 31)
 
-      # Initialize df_portfolio
-      df_portfolio = None
-      
-      for ticker, weight in portfolio:
+      # Parse the expression and extract tickers
+      try:
+          expr, tickers = parse_expression(expression_input)
+          if not tickers:
+              st.write("No se encontraron tickers en la expresión.")
+              continue
+      except ValueError as ve:
+          st.error(f"Error al parsear la expresión: {ve}")
+          break
+
+      # Descargar datos para los tickers
+      data_frames = []
+      for ticker in tickers:
           stock_data = yf.download(ticker, start=start_date, end=end_date)
           if not stock_data.empty:
               stock_data.reset_index(inplace=True)
               stock_data = ajustar_precios_por_splits(stock_data, ticker)
-              stock_data.rename(columns={'Close': f'Close_{ticker}'}, inplace=True)
-              stock_data = stock_data[['Date', f'Close_{ticker}']]
-              if df_portfolio is None:
-                  df_portfolio = stock_data
-              else:
-                  df_portfolio = pd.merge(df_portfolio, stock_data, on='Date', how='outer')
+              stock_data = stock_data[['Date', 'Close']].rename(columns={'Close': ticker})
+              data_frames.append(stock_data)
           else:
-              st.write(f"No se encontraron datos para {ticker} en el año {year}.")
+              st.warning(f"No se encontraron datos para {ticker} en el año {year}.")
 
-      if df_portfolio is not None and not df_portfolio.empty:
+      if data_frames:
+          # Merge all data frames on 'Date'
+          df_expression = data_frames[0]
+          for df in data_frames[1:]:
+              df_expression = pd.merge(df_expression, df, on='Date', how='outer')
+
           # Sort by Date
-          df_portfolio.sort_values('Date', inplace=True)
+          df_expression.sort_values('Date', inplace=True)
           # Fill missing values
-          df_portfolio.fillna(method='ffill', inplace=True)
-          df_portfolio.fillna(method='bfill', inplace=True)
-          
-          # Compute Portfolio_Value
-          df_portfolio['Portfolio_Value'] = 0
-          for ticker, weight in portfolio:
-              df_portfolio['Portfolio_Value'] += weight * df_portfolio[f'Close_{ticker}']
-          
-          # Now, proceed to calculate cumulative inflation
-          cumulative_inflation = calcular_inflacion_diaria_rango(
-              df_portfolio, start_date.year, start_date.month, end_date.year, end_date.month
-          )
-          
-          # Prepare 'df' as expected by generar_grafico
-          df = df_portfolio[['Date', 'Portfolio_Value']].rename(columns={'Portfolio_Value': 'Close'})
-          
-          # Generate the plot
-          generar_grafico('Portafolio', df, cumulative_inflation, year)
-      else:
-          st.write(f"No se encontraron datos para el portafolio en el año {year}.")
+          df_expression.fillna(method='ffill', inplace=True)
+          df_expression.fillna(method='bfill', inplace=True)
 
+          # Evaluar la expresión
+          try:
+              df_expression['Result'] = evaluate_expression(expr, df_expression)
+          except ZeroDivisionError as zde:
+              st.error(f"Error en la expresión para el año {year}: {zde}")
+              continue
+          except ValueError as ve:
+              st.error(f"Error en la expresión para el año {year}: {ve}")
+              continue
+
+          # Calcular inflación acumulada
+          cumulative_inflation = calcular_inflacion_diaria_rango(
+              df_expression, start_date.year, start_date.month, end_date.year, end_date.month
+          )
+
+          # Verificar que el número de días coincida
+          if len(cumulative_inflation) != len(df_expression):
+              st.warning(f"Desajuste en el cálculo de inflación para el año {year}.")
+
+          # Agregar la columna de inflación
+          df_expression['Inflación'] = cumulative_inflation
+
+          # Generar el gráfico
+          generar_grafico(expression_input, df_expression[['Date', 'Result']], cumulative_inflation, year)
+
+      else:
+          st.warning(f"No se pudieron obtener datos para los tickers en el año {year}.")
+
+# ------------------------------
 else:
-  start_date = st.date_input("Fecha de inicio", date(2020, 1, 1))
-  end_date = st.date_input("Fecha de fin", date(2024, 12, 31))
+  # Date range analysis
+  st.header("Análisis por Rango de Fechas")
+  col1, col2 = st.columns(2)
+  with col1:
+      start_date = st.date_input("Fecha de inicio", date(2020, 1, 1))
+  with col2:
+      end_date = st.date_input("Fecha de fin", date(2024, 12, 31))
   
   if start_date < end_date:
-      # Initialize df_portfolio
-      df_portfolio = None
-      
-      for ticker, weight in portfolio:
+      # Parse the expression and extract tickers
+      try:
+          expr, tickers = parse_expression(expression_input)
+          if not tickers:
+              st.write("No se encontraron tickers en la expresión.")
+      except ValueError as ve:
+          st.error(f"Error al parsear la expresión: {ve}")
+          st.stop()
+
+      # Descargar datos para los tickers
+      data_frames = []
+      for ticker in tickers:
           stock_data = yf.download(ticker, start=start_date, end=end_date)
           if not stock_data.empty:
               stock_data.reset_index(inplace=True)
-              stock_data = ajustar_precios_por_splits(stock_data, ticker)  # Adjust prices for splits
-              stock_data.rename(columns={'Close': f'Close_{ticker}'}, inplace=True)
-              stock_data = stock_data[['Date', f'Close_{ticker}']]
-              if df_portfolio is None:
-                  df_portfolio = stock_data
-              else:
-                  df_portfolio = pd.merge(df_portfolio, stock_data, on='Date', how='outer')
+              stock_data = ajustar_precios_por_splits(stock_data, ticker)
+              stock_data = stock_data[['Date', 'Close']].rename(columns={'Close': ticker})
+              data_frames.append(stock_data)
           else:
-              st.write(f"No se encontraron datos para {ticker} en el rango de fechas especificado.")
-      
-      if df_portfolio is not None and not df_portfolio.empty:
+              st.warning(f"No se encontraron datos para {ticker} en el rango de fechas especificado.")
+
+      if data_frames:
+          # Merge all data frames on 'Date'
+          df_expression = data_frames[0]
+          for df in data_frames[1:]:
+              df_expression = pd.merge(df_expression, df, on='Date', how='outer')
+
           # Sort by Date
-          df_portfolio.sort_values('Date', inplace=True)
-          # Fill missing values if needed
-          df_portfolio.fillna(method='ffill', inplace=True)
-          df_portfolio.fillna(method='bfill', inplace=True)
-          
-          # Compute Portfolio_Value
-          df_portfolio['Portfolio_Value'] = 0
-          for ticker, weight in portfolio:
-              df_portfolio['Portfolio_Value'] += weight * df_portfolio[f'Close_{ticker}']
-          
-          # Now, proceed to calculate cumulative inflation
+          df_expression.sort_values('Date', inplace=True)
+          # Fill missing values
+          df_expression.fillna(method='ffill', inplace=True)
+          df_expression.fillna(method='bfill', inplace=True)
+
+          # Evaluar la expresión
+          try:
+              df_expression['Result'] = evaluate_expression(expr, df_expression)
+          except ZeroDivisionError as zde:
+              st.error(f"Error en la expresión: {zde}")
+              st.stop()
+          except ValueError as ve:
+              st.error(f"Error en la expresión: {ve}")
+              st.stop()
+
+          # Calcular inflación acumulada
           cumulative_inflation = calcular_inflacion_diaria_rango(
-              df_portfolio, start_date.year, start_date.month, end_date.year, end_date.month
+              df_expression, start_date.year, start_date.month, end_date.year, end_date.month
           )
-          
-          # Prepare 'df' as expected by generar_grafico
-          df = df_portfolio[['Date', 'Portfolio_Value']].rename(columns={'Portfolio_Value': 'Close'})
-          
-          # Generate the plot
-          generar_grafico('Portafolio', df, cumulative_inflation)
+
+          # Verificar que el número de días coincida
+          if len(cumulative_inflation) != len(df_expression):
+              st.warning("Desajuste en el cálculo de inflación para el rango de fechas seleccionado.")
+
+          # Agregar la columna de inflación
+          df_expression['Inflación'] = cumulative_inflation
+
+          # Generar el gráfico
+          generar_grafico(expression_input, df_expression[['Date', 'Result']], cumulative_inflation)
       else:
-          st.write(f"No se encontraron datos para el portafolio en el rango de fechas especificado.")
+          st.warning("No se pudieron obtener datos para los tickers en el rango de fechas especificado.")
   else:
-      st.write("La fecha de inicio debe ser anterior a la fecha de fin.")
+      st.error("La fecha de inicio debe ser anterior a la fecha de fin.")
