@@ -200,9 +200,6 @@ def parse_expression(input_str):
   # Extract unique variable names used in the expression
   variables = set(re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b', expression_mapped))
 
-  # Remove known functions/operators if any; numexpr handles operators automatically
-  # Optionally, you can implement a whitelist of allowed functions
-
   return expression_mapped, ticker_mapping
 
 # ------------------------------
