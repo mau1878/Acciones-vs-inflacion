@@ -166,7 +166,7 @@ def generar_grafico(expression_str, df, cumulative_inflation, year=None, date_ra
       )
 
       # Configurar el color de fondo de la figura
-      fig.update_layout(plot_bgcolor='white')
+      fig.update_layout(plot_bgcolor='black')
 
       st.plotly_chart(fig)
       st.markdown(f"**Rendimiento de {expression_str}:** {expression_return:.2f}%")
