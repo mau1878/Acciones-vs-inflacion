@@ -92,14 +92,19 @@ def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_m
     return cumulative_inflation[1:]  # Remover el valor inicial de 1
 
 # Función para generar y mostrar gráfico
-def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=False):
+def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=False, portfolio_value=None):
     inflation_line = df['Close'].iloc[0] * pd.Series(cumulative_inflation)
 
     # Calcular rendimientos
     stock_return = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100
     inflation_return = ((cumulative_inflation[-1] - 1) * 100)
 
-    # Create figure
+    # Si se proporciona un valor de cartera, calcular rendimiento relativo a la inflación de la cartera
+    if portfolio_value is not None:
+        portfolio_return = ((portfolio_value[-1] - portfolio_value[0]) / portfolio_value[0]) * 100
+        inflation_return = ((cumulative_inflation[-1] - 1) * 100)
+
+    # Crear figura
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name=ticker))
     fig.add_trace(go.Scatter(x=df['Date'], y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
@@ -129,47 +134,47 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
     st.plotly_chart(fig)
     st.write(f"Rendimiento de {ticker}: {stock_return:.2f}%")
     st.write(f"Inflación en Argentina: {inflation_return:.2f}%")
+    if portfolio_value is not None:
+        st.write(f"Rendimiento de la cartera: {portfolio_return:.2f}%")
     st.write(f"Diferencia: {stock_return - inflation_return:.2f}%")
 
-# Streamlit UI
-st.title("Análisis de Ticker y Comparación con Inflación")
+# Interfaz de usuario
+st.title("Simulador de Cartera")
+tickers_input = st.text_input("Ingrese los tickers (separados por comas):", "AGRO.BA, MMM.BA")
+weights_input = st.text_input("Ingrese las asignaciones de su cartera (separadas por comas):", "50,50")
 
-# Ensure ticker input is in uppercase
-ticker = st.text_input("Ingrese el ticker (por defecto GGAL.BA):", "GGAL.BA").upper()
+# Obtener valores de la cartera
+if st.button("Calcular y Graficar"):
+    tickers = [ticker.strip().upper() for ticker in tickers_input.split(",")]
+    weights = [float(weight.strip()) for weight in weights_input.split(",")]
 
-# Option to choose between per-year analysis or date range analysis
-analysis_type = st.radio(
-    "Seleccione el tipo de análisis:",
-    ('Por año (predeterminado)', 'Por rango de fechas')
-)
-
-if analysis_type == 'Por año (predeterminado)':
-    # Analyze one graph per year (default)
-    for year in range(2017, 2025):
-        start_date = datetime(year, 1, 1)
-        end_date = datetime(year, 12, 31)
-
-        stock_data = yf.download(ticker, start=start_date, end=end_date)
-        
-        if not stock_data.empty:
-            stock_data.reset_index(inplace=True)
-            stock_data = ajustar_precios_por_splits(stock_data, ticker)  # Adjust prices for splits
-            cumulative_inflation = calcular_inflacion_diaria_rango(stock_data, start_date.year, start_date.month, end_date.year, end_date.month)
-            generar_grafico(ticker, stock_data, cumulative_inflation, year)
+    if len(tickers) != len(weights):
+        st.error("El número de tickers y asignaciones no coincide.")
+    else:
+        # Validar que las asignaciones sumen 100
+        if sum(weights) != 100:
+            st.error("Las asignaciones deben sumar 100.")
         else:
-            st.write(f"No se encontraron datos para {ticker} en el año {year}.")
+            # Obtener datos de precios
+            df_list = []
+            for ticker in tickers:
+                data = yf.download(ticker, start="2017-01-01", end=datetime.today().strftime('%Y-%m-%d'))
+                data = ajustar_precios_por_splits(data, ticker)
+                df_list.append(data)
 
-else:
-    start_date = st.date_input("Fecha de inicio", date(2020, 1, 1))
-    end_date = st.date_input("Fecha de fin", date(2024, 12, 31))
-    
-    if start_date < end_date:
-        stock_data = yf.download(ticker, start=start_date, end=end_date)
-        
-        if not stock_data.empty:
-            stock_data.reset_index(inplace=True)
-            stock_data = ajustar_precios_por_splits(stock_data, ticker)  # Adjust prices for splits
-            cumulative_inflation = calcular_inflacion_diaria_rango(stock_data, start_date.year, start_date.month, end_date.year, end_date.month)
-            generar_grafico(ticker, stock_data, cumulative_inflation)
-        else:
-            st.write(f"No se encontraron datos para {ticker} en el rango de fechas especificado.")
+            # Concatenar DataFrames
+            df = pd.concat(df_list, axis=1)
+            df.columns = tickers
+
+            # Obtener inflación acumulada
+            cumulative_inflation = calcular_inflacion_diaria_rango(df, 2017, 1, 2024, 12)
+
+            # Calcular el valor de la cartera
+            portfolio_value = []
+            for i in range(len(df)):
+                weighted_sum = sum(df.iloc[i][tickers[j]] * (weights[j] / 100) for j in range(len(tickers)))
+                portfolio_value.append(weighted_sum)
+
+            # Generar gráfico
+            generar_grafico(tickers[0], df, cumulative_inflation, date_range=True, portfolio_value=portfolio_value)
+
