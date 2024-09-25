@@ -52,15 +52,21 @@ splits = {
     'AGRO.BA': (6, 2.1)  # Ajustes para AGRO.BA
 }
 
-# Función para ajustar precios por splits
+# Después de descargar el DataFrame
+df.reset_index(inplace=True)  # Asegúrate de que 'Date' se convierta en una columna
+
+# Comprobar la estructura del DataFrame
+print(df.head())  # Verifica que 'Date' esté presente
+
+# Función para ajustar precios
 def ajustar_precios_por_splits(df, ticker):
-    if ticker == 'AGRO.BA':
-        # Ajuste para AGRO.BA
-        df.loc[df['Date'] < datetime(2023, 11, 3), 'Close'] /= 6
-        df.loc[df['Date'] == datetime(2023, 11, 3), 'Close'] *= 2.1
-    else:
-        divisor = splits.get(ticker, 1)  # Valor por defecto es 1 si no está en el diccionario
-        df.loc[df['Date'] <= datetime(2024, 1, 23), 'Close'] /= divisor
+    if 'Date' not in df.columns:
+        print("Available columns:", df.columns)
+        raise KeyError("The 'Date' column is missing from the DataFrame.")
+    
+    # Lógica existente para ajustar precios
+    divisor = splits.get(ticker, 1)  # Valor por defecto es 1 si no hay splits
+    df.loc[df['Date'] <= datetime(2024, 1, 23), 'Close'] /= divisor
     return df
 
 # Función para calcular inflación diaria acumulada dentro de un rango de fechas
