@@ -53,11 +53,9 @@ splits = {
 
 # Función para ajustar precios por splits
 def ajustar_precios_por_splits(df, ticker):
-    # Asegurarse de que el índice esté en formato datetime
     df.index = pd.to_datetime(df.index)
 
     if ticker == 'AGRO.BA':
-        # Ajustando precios basados en el índice para el filtrado de fechas
         df.loc[df.index < datetime(2023, 11, 3), 'Close'] /= 6
         df.loc[df.index == datetime(2023, 11, 3), 'Close'] *= 2.1
     else:
@@ -104,10 +102,11 @@ def generar_grafico(portfolio_data, cumulative_inflation):
         else:
             total_portfolio_value += data['value']
 
-        fig.add_trace(go.Scatter(x=data['df'].index, y=data['value'], name=ticker))
+    # Adding the total portfolio value to the figure
+    fig.add_trace(go.Scatter(x=total_portfolio_value.index, y=total_portfolio_value, name='Valor Total de la Cartera'))
 
+    # Adding inflation line
     inflation_line = data['df']['Close'].iloc[0] * pd.Series(cumulative_inflation)
-
     fig.add_trace(go.Scatter(x=data['df'].index, y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
 
     title_text = "Cartera vs Inflación"
@@ -193,7 +192,7 @@ try:
                     portfolio_data[asset_ticker]['df'] = asset_df
                     portfolio_data[asset_ticker]['value'] = asset_df['Close'] * portfolio_data[asset_ticker]['weight']
 
-            # Generar el gráfico
+            # Generate the graph
             generar_grafico(portfolio_data, cumulative_inflation)
 
 except Exception as e:
