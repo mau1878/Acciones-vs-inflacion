@@ -32,31 +32,32 @@ def calcular_inflacion_diaria_rango(start_date, end_date):
 
 # Function to adjust prices for splits
 def ajustar_precios_por_splits(df, ticker):
-    if ticker == 'AGRO.BA':
-        # Specific adjustments for AGRO.BA if needed
-        pass
-    else:
-        divisor = 1  # Placeholder for splits, implement as necessary
-        df['Close'] /= divisor
-
+    # Implement your logic for stock splits if needed
+    df['Close'] = df['Close']  # Adjust as necessary
     return df
 
 # Function to generate and display the graph
 def generar_grafico(portfolio_data, cumulative_inflation):
     fig = go.Figure()
 
-    # Add each stock's data to the graph
+    # Calculate the portfolio value over time
+    total_portfolio_value = None
     for ticker, data in portfolio_data.items():
-        fig.add_trace(go.Scatter(x=data['df'].index, y=data['df']['Close'], name=ticker))
+        if total_portfolio_value is None:
+            total_portfolio_value = data['value']
+        else:
+            total_portfolio_value += data['value']
+
+        fig.add_trace(go.Scatter(x=data['df'].index, y=data['value'], mode='lines', name=ticker))
 
     # Calculate and plot cumulative inflation
-    inflation_line = data['df']['Close'].iloc[0] * pd.Series(cumulative_inflation)
+    inflation_line = total_portfolio_value.iloc[0] * pd.Series(cumulative_inflation)
     fig.add_trace(go.Scatter(x=data['df'].index, y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
 
     fig.update_layout(
         title="Análisis del Portafolio vs Inflación",
         xaxis_title='Fecha',
-        yaxis_title='Precio (ARS)',
+        yaxis_title='Valor (ARS)',
         height=600,
         width=900,
         dragmode='zoom',
@@ -83,8 +84,9 @@ end_date = st.date_input("Fecha de fin", datetime.today())
 # Fetch and analyze data
 if portfolio_input:
     portfolio_data = {}
+    total_value = 0
     tickers = [item.split('*')[0].strip() for item in portfolio_input.split('+')]
-    
+
     # Process each ticker in the portfolio
     for ticker in tickers:
         try:
@@ -92,8 +94,20 @@ if portfolio_input:
             if df.empty:
                 st.warning(f"No se encontraron datos para el ticker {ticker}.")
                 continue
+            
+            # Adjust prices for splits and calculate total value
             df = ajustar_precios_por_splits(df, ticker)
-            portfolio_data[ticker] = {'df': df}
+            weight = float(portfolio_input.split(ticker + '*')[1].split('+')[0].strip()) if '*' in portfolio_input else 1.0
+            portfolio_data[ticker] = {
+                'df': df,
+                'value': df['Close'] * weight
+            }
+
+            # Update total value
+            if total_value is None:
+                total_value = portfolio_data[ticker]['value']
+            else:
+                total_value += portfolio_data[ticker]['value']
 
         except Exception as e:
             st.error(f"Se produjo un error al recuperar los datos para {ticker}: {e}")
