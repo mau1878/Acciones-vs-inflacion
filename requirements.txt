@@ -3,4 +3,5 @@ pandas
 plotly
 streamlit
 investpy
-alpha_vantage
+simpy
+re
