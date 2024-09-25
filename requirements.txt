@@ -3,5 +3,5 @@ pandas
 plotly
 streamlit
 investpy
-simpy
+sympy
 re
