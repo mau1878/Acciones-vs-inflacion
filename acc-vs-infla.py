@@ -1,5 +1,5 @@
 import yfinance as yf
-from datetime import datetime, date
+from datetime import datetime
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -53,11 +53,11 @@ splits = {
 
 # Función para ajustar precios por splits
 def ajustar_precios_por_splits(df, ticker):
-    # Ensure the index is in datetime format
+    # Asegurarse de que el índice esté en formato datetime
     df.index = pd.to_datetime(df.index)
 
     if ticker == 'AGRO.BA':
-        # Adjusting prices based on the index for date filtering
+        # Ajustando precios basados en el índice para el filtrado de fechas
         df.loc[df.index < datetime(2023, 11, 3), 'Close'] /= 6
         df.loc[df.index == datetime(2023, 11, 3), 'Close'] *= 2.1
     else:
@@ -84,7 +84,7 @@ def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_m
             months = range(0, 12)
 
         for month in months:
-            days_in_month = (df['Date'].dt.year == year) & (df['Date'].dt.month == month + 1)
+            days_in_month = (df.index.year == year) & (df.index.month == month + 1)
             if days_in_month.sum() > 0:
                 daily_rate = (1 + monthly_inflation[month] / 100) ** (1 / days_in_month.sum()) - 1
                 for _ in range(days_in_month.sum()):
@@ -93,17 +93,17 @@ def calcular_inflacion_diaria_rango(df, start_year, start_month, end_year, end_m
     return cumulative_inflation[1:]
 
 # Función para generar y mostrar gráfico
-def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=False):
+def generar_grafico(ticker, df, cumulative_inflation, year=None):
     inflation_line = df['Close'].iloc[0] * pd.Series(cumulative_inflation)
 
     stock_return = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0]) * 100
     inflation_return = ((cumulative_inflation[-1] - 1) * 100)
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name=ticker))
-    fig.add_trace(go.Scatter(x=df['Date'], y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
+    fig.add_trace(go.Scatter(x=df.index, y=df['Close'], name=ticker))
+    fig.add_trace(go.Scatter(x=df.index, y=inflation_line, name='Inflación', line=dict(dash='dash', color='red')))
 
-    title_text = f"{ticker} vs Inflación ({year})" if year else f"{ticker} vs Inflación (Rango de Fechas)"
+    title_text = f"{ticker} vs Inflación ({year})" if year else f"{ticker} vs Inflación"
     fig.update_layout(
         title=title_text,
         xaxis_title='Fecha',
@@ -133,18 +133,15 @@ def generar_grafico(ticker, df, cumulative_inflation, year=None, date_range=Fals
 # Streamlit UI
 st.title("Análisis de Ticker y Comparación con Inflación")
 
-# Ensure ticker input is in uppercase
+# Asegúrese de que la entrada del ticker esté en mayúsculas
 ticker = st.text_input("Ingrese el ticker (por defecto GGAL.BA):", "GGAL.BA").upper()
 
-# New input for portfolio weights
+# Nueva entrada para los pesos de la cartera
 portfolio_input = st.text_input("Ingrese su cartera (ejemplo: GGAL.BA*0.5 + PAMP.BA*0.2 + SPY.BA*0.05 + YPFD.BA*0.25):", 
                                  "GGAL.BA*0.5 + PAMP.BA*0.2 + SPY.BA*0.05 + YPFD.BA*0.25")
 
-# Option to choose between per-year analysis or date range analysis
-analysis_type = st.radio(
-    "Seleccione el tipo de análisis:",
-    ('Por año (predeterminado)', 'Por rango de fechas')
-)
+# Opción para elegir entre análisis por año o por rango de fechas
+analysis_type = st.selectbox("Seleccione tipo de análisis:", ('Por año (predeterminado)', 'Por rango de fechas'))
 
 # Date inputs only appear if the user selects the date range analysis
 start_date = None
