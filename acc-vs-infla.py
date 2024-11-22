@@ -248,14 +248,37 @@ def parse_portfolio(input_str):
 # Caching functions to optimize performance
 @st.cache_data(ttl=86400)  # Cache data for one day
 def descargar_datos(ticker, start, end):
-  stock_data = yf.download(ticker, start=start, end=end)
-  if not stock_data.empty:
-      stock_data.reset_index(inplace=True)
-      stock_data = ajustar_precios_por_splits(stock_data, ticker)
-      # Map ticker to variable name by replacing '.' with '_'
-      var_name = ticker.replace('.', '_')
-      stock_data = stock_data[['Date', 'Close']].rename(columns={'Close': var_name})
-  return stock_data
+    try:
+        stock_data = yf.download(ticker, start=start, end=end)
+        
+        # Debug prints
+        logger.info(f"Downloaded data structure for {ticker}:")
+        logger.info(f"Columns: {stock_data.columns}")
+        logger.info(f"Index: {stock_data.index}")
+        
+        if not stock_data.empty:
+            stock_data = stock_data.reset_index()
+            
+            if isinstance(stock_data.columns, pd.MultiIndex):
+                logger.info("Processing multi-index DataFrame")
+                close_price = stock_data[('Close', ticker)]
+                stock_data = pd.DataFrame({
+                    'Date': stock_data['Date'],
+                    ticker.replace('.', '_'): close_price
+                })
+            else:
+                logger.info("Processing single-index DataFrame")
+                stock_data = ajustar_precios_por_splits(stock_data, ticker)
+                var_name = ticker.replace('.', '_')
+                stock_data = stock_data[['Date', 'Close']].rename(columns={'Close': var_name})
+                
+            logger.info(f"Processed data shape: {stock_data.shape}")
+            logger.info(f"Processed columns: {stock_data.columns}")
+            
+        return stock_data
+    except Exception as e:
+        logger.error(f"Error downloading data for {ticker}: {e}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=86400)
 def obtener_inflacion(df, start_year, start_month, end_year, end_month):
